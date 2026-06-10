@@ -1,21 +1,22 @@
 { pkgs }:
 
 # Reusable builder for a Devin desktop (Electron / VS Code fork) release.
-# Each release is a license-gated tarball fetched manually via requireFile,
+# The tarball is fetched from Devin's update server (commit-pinned URL) and
 # unpacked into the store, then run inside an FHS sandbox that supplies the
 # Chromium runtime libraries NixOS does not provide under /usr/lib.
 #
 # Produces a package that exposes:
-#   bin/<pname>                      the launcher
-#   share/applications/<pname>.desktop   app-menu entry
+#   bin/${exe}                       the GUI launcher (e.g. devin-desktop-next)
+#   bin/devin                        the local Devin agent (terminal CLI)
+#   share/applications/*.desktop     app-menu entry + auth url-handler
 #   share/icons + share/pixmaps      icon
 
-{ pname            # binary / attribute name, e.g. "devin"
+{ pname            # derivation / flake-attr name, e.g. "devin-desktop-next"
 , version          # upstream version string
-, desktopName      # human label in the app menu, e.g. "Devin"
+, desktopName      # human label in the app menu, e.g. "Devin - Next"
 , url              # stable update-server download URL (commit-pinned)
 , sha256           # SRI hash of the tarball (== update API sha256hash)
-, exe              # executable inside the unpacked Devin/ folder
+, exe              # GUI executable / launcher command, e.g. devin-desktop-next
 , iconFile ? "code.png"   # icon under resources/app/resources/linux/
 , urlScheme ? "devin"     # product.json urlProtocol (auth deep-link scheme)
 }:
@@ -23,7 +24,12 @@
 let
   inherit (pkgs)
     lib stdenv buildFHSEnv writeShellScript symlinkJoin
-    makeDesktopItem runCommand fetchurl;
+    makeDesktopItem runCommand fetchurl makeWrapper;
+
+  # External tools Devin shells out to (ACP/MCP agents via npx/uvx, python
+  # MCP servers, git, make). Shared by BOTH the FHS sandbox (the GUI app)
+  # and the agent wrapper (the terminal `devin`) so they behave identically.
+  agentTools = with pkgs; [ nodejs uv python3 git gnumake ];
 
   # The tarball is served from Devin's own auto-update server at a stable,
   # commit-pinned path (the segment in the URL is the build's git commit, not
@@ -75,33 +81,40 @@ let
       libxext libxfixes libxi libxrandr libxrender
       libxscrnsaver libxtst libxcb libxkbfile libxshmfence
 
-      # Runtime tools the app shells out to. devin-desktop spawns these by
-      # name on PATH for: ACP agents (Claude Code) and MCP servers launched
-      # via `npx <pkg>` / `uvx <pkg>`, git source control, /usr/bin/python3
-      # and /usr/bin/make (hardcoded), and terminal/task execution.
-      nodejs       # node, npm, npx  -> ACP/MCP "npx" distribution
-      uv           # uv, uvx         -> ACP/MCP "uvx" distribution
-      python3      # /usr/bin/python3 (hardcoded) + python-based MCP servers
-      git          # source control integration (no bundled git)
-      gnumake      # /usr/bin/make referenced by the task system
       which        # PATH probing used during tool discovery
       cacert       # TLS roots so npx/uvx/git can fetch over HTTPS
 
       # launcher / base shell deps
       coreutils bashInteractive
-    ];
+    ] ++ agentTools;  # node/npx, uv/uvx, python3, git, make (see above)
 
-    runScript = writeShellScript "${pname}-run" ''
+    runScript = writeShellScript "${exe}-run" ''
       # Make TLS work for tools the app spawns to fetch packages (npx, uvx,
       # git) inside the sandbox, which has no system cert bundle of its own.
       export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
       export NIX_SSL_CERT_FILE="$SSL_CERT_FILE"
       export NODE_EXTRA_CA_CERTS="$SSL_CERT_FILE"
       export GIT_SSL_CAINFO="$SSL_CERT_FILE"
-      cd ${payload}/Devin
-      exec ./${exe} --no-sandbox "$@"
+      # Launch by absolute path (no cd) so relative args like `${exe} .`
+      # resolve against the user's working directory, not the store.
+      exec ${payload}/Devin/${exe} --no-sandbox "$@"
     '';
   };
+
+  # The local Devin agent ("Devin Local") — a STATIC binary bundled in the
+  # app, so it runs natively on NixOS with no sandbox. The wrapper only
+  # injects the spawn tools onto its PATH so terminal MCP/ACP works exactly
+  # like the in-GUI agent. Reads the same ~/.config/devin/config.json the IDE
+  # writes. Exposed as the `devin` command (distinct from the `${exe}` GUI).
+  agent = runCommand "devin-agent-${version}"
+    { nativeBuildInputs = [ makeWrapper ]; } ''
+    mkdir -p $out/bin
+    makeWrapper \
+      ${payload}/Devin/resources/app/extensions/windsurf/devin/bin/devin \
+      $out/bin/devin \
+      --prefix PATH : ${lib.makeBinPath agentTools} \
+      --set-default SSL_CERT_FILE ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+  '';
 
   desktopItem = makeDesktopItem {
     name = pname;
@@ -143,7 +156,10 @@ let
 in
 symlinkJoin {
   name = "${pname}-${version}";
-  paths = [ fhs desktopItem urlHandler icon ];
+  # bin/${exe} (GUI, via FHS) + bin/devin (terminal agent) + desktop/icon.
+  # Note: both channels' agents provide bin/devin, so enabling stable AND
+  # next together collides on `devin` — install one channel's agent.
+  paths = [ fhs desktopItem urlHandler icon agent ];
 
   meta = {
     description = "Devin desktop — ${desktopName} (${version})";

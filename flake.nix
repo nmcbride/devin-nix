@@ -16,7 +16,7 @@
     {
       packages.${system} = rec {
         devin = mkDevin {
-          pname = "devin";
+          pname = "devin-desktop";
           version = "3.0.28";
           desktopName = "Devin";
           url = "https://windsurf-stable.codeiumdata.com/linux-x64/stable/e9f7e622f49ec544e97d0e624691d71a963ac40b/Devin-linux-x64-3.0.28.tar.gz";
@@ -25,9 +25,9 @@
         };
 
         devin-next = mkDevin {
-          pname = "devin-next";
+          pname = "devin-desktop-next";
           version = "3.1.1005+next.296eca6010";
-          desktopName = "Devin Next";
+          desktopName = "Devin - Next";
           url = "https://windsurf-stable.codeiumdata.com/linux-x64/next/296eca60105473c0cd97c73679ac395c1d23a155/Devin-linux-x64-3.1.1005+next.296eca6010.tar.gz";
           sha256 = "sha256-aOzum13UNvLLrPPIIX9k+ObKjS+Z/PAThfBBQ0EEc28=";
           exe = "devin-desktop-next";
@@ -38,14 +38,15 @@
         default = devin;
       };
 
+      # `nix run .#devin[-next]` opens the GUI; the agent is `bin/devin`.
       apps.${system} = rec {
         devin = {
           type = "app";
-          program = "${self.packages.${system}.devin}/bin/devin";
+          program = "${self.packages.${system}.devin}/bin/devin-desktop";
         };
         devin-next = {
           type = "app";
-          program = "${self.packages.${system}.devin-next}/bin/devin-next";
+          program = "${self.packages.${system}.devin-next}/bin/devin-desktop-next";
         };
         default = devin;
       };
