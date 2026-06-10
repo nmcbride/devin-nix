@@ -49,5 +49,9 @@
         };
         default = devin;
       };
+
+      # Import as: imports = [ devin-nix.nixosModules.default ];
+      # then: programs.devin.enable = true;  (and/or programs.devin.enableNext)
+      nixosModules.default = import ./module.nix self;
     };
 }
