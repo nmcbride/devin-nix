@@ -12,24 +12,23 @@
         config.allowUnfree = true;
       };
       mkDevin = import ./package.nix { inherit pkgs; };
+      # version + url + sha256 per channel, kept in sources.json so the
+      # update workflow can rewrite them with jq (see .github/workflows).
+      sources = builtins.fromJSON (builtins.readFile ./sources.json);
     in
     {
       packages.${system} = rec {
         devin = mkDevin {
           pname = "devin-desktop";
-          version = "3.0.28";
+          inherit (sources.stable) version url sha256;
           desktopName = "Devin";
-          url = "https://windsurf-stable.codeiumdata.com/linux-x64/stable/e9f7e622f49ec544e97d0e624691d71a963ac40b/Devin-linux-x64-3.0.28.tar.gz";
-          sha256 = "sha256-5U4eb9ztXWz6VRNuVT7pr0BcigSLKoUz5Bo5oL4Owdo=";
           exe = "devin-desktop";
         };
 
         devin-next = mkDevin {
           pname = "devin-desktop-next";
-          version = "3.1.1005+next.296eca6010";
+          inherit (sources.next) version url sha256;
           desktopName = "Devin - Next";
-          url = "https://windsurf-stable.codeiumdata.com/linux-x64/next/296eca60105473c0cd97c73679ac395c1d23a155/Devin-linux-x64-3.1.1005+next.296eca6010.tar.gz";
-          sha256 = "sha256-aOzum13UNvLLrPPIIX9k+ObKjS+Z/PAThfBBQ0EEc28=";
           exe = "devin-desktop-next";
           iconFile = "code-next.png";
           urlScheme = "devin-next";

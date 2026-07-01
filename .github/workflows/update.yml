@@ -1,0 +1,73 @@
+name: update
+
+# Auto-bump the pinned Devin versions from the Windsurf/Codeium update API.
+# Runs daily and on manual dispatch. `stable` always tracks the latest build;
+# `next` is only updated when a genuine beta is live (the endpoint's URL path
+# contains /next/) -- between betas that endpoint serves stable content, which
+# the devin-next package (code-next.png, devin-next:// scheme) can't consume,
+# so we leave the last beta pin untouched. You still pull bumps with
+# `nix flake update devin-nix` + rebuild.
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync sources.json with the update API
+        id: bump
+        run: |
+          set -euo pipefail
+          api="https://windsurf-stable.codeium.com/api/update/linux-x64"
+
+          # hex sha256 -> SRI (sha256-<base64>), no Nix required
+          sri() { printf 'sha256-%s' "$(printf '%s' "$1" | xxd -r -p | base64 -w0)"; }
+
+          summary=""
+          for ch in stable next; do
+            resp="$(curl -fsSL "$api/$ch/latest")"
+            url="$(jq -r .url <<<"$resp")"
+            ver="$(jq -r .windsurfVersion <<<"$resp")"
+            sha="$(jq -r .sha256hash <<<"$resp")"
+
+            # next: skip unless a real beta is published for that channel
+            if [ "$ch" = next ] && [[ "$url" != *"/linux-x64/next/"* ]]; then
+              echo "next: no live beta (endpoint is at stable) -- leaving pin"
+              continue
+            fi
+
+            cur="$(jq -r ".$ch.url" sources.json)"
+            if [ "$url" = "$cur" ]; then
+              echo "$ch: up to date ($ver)"
+              continue
+            fi
+
+            old="$(jq -r ".$ch.version" sources.json)"
+            tmp="$(mktemp)"
+            jq --arg v "$ver" --arg u "$url" --arg s "$(sri "$sha")" \
+               ".$ch = {version: \$v, url: \$u, sha256: \$s}" sources.json > "$tmp"
+            mv "$tmp" sources.json
+            echo "$ch: $old -> $ver"
+            summary="$summary $ch $old->$ver"
+          done
+
+          if [ -n "$summary" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "summary=$summary" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit the bump
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sources.json
+          git commit -m "devin:${{ steps.bump.outputs.summary }}"
+          git push
