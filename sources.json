@@ -1,8 +1,8 @@
 {
   "stable": {
-    "version": "3.10.27",
-    "url": "https://windsurf-stable.codeiumdata.com/linux-x64/stable/bcbe88c734e882c54479decce8c34eabc9f8f8b0/Devin-linux-x64-3.10.27.tar.gz",
-    "sha256": "sha256-uSGigE6RWiF67T+ig+04jrHcvnQpGBNvgOo5Z9zNb4Y="
+    "version": "3.10.31",
+    "url": "https://windsurf-stable.codeiumdata.com/linux-x64/stable/b98cc43128712ba73c60cca73876f58a710aaa27/Devin-linux-x64-3.10.31.tar.gz",
+    "sha256": "sha256-s93xCYwRJVNU1goHeNcDOYnq7YWje71V35AWf0LrU0Y="
   },
   "next": {
     "version": "3.1.1005+next.296eca6010",
